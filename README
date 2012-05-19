@@ -1,4 +1,4 @@
-hfsprescue 0.1 20101130 by Elmar Hanlhofer http://www.plop.at
+hfsprescue 0.2 20111125 by Elmar Hanlhofer http://www.plop.at
 
 hfsprescue scans a damaged image file or partition that is formatted with
 HFS+. You can restore your files and directories, even when it's not possible 
@@ -22,3 +22,9 @@ You have to complete 3 steps to restore your files:
 Example: hfsprescue /dev/sdb2
          hfsprescue -v /dev/sdb2   verbose infos on the screen
 
+
+
+Changelog
+
+0.2 20111125 - segfault bugfix
+0.1 20101130 - initial release

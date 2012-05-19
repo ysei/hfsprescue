@@ -8,7 +8,7 @@
  *
  */
 
-#define VERSION "0.1 20101130"
+#define VERSION "0.2 20111125"
 
 #define _FILE_OFFSET_BITS 64
 #define __USE_FILE_OFFSET64
@@ -576,6 +576,19 @@ void GenerateRenameScript()
 	exit (EXIT_FAILURE);    
     }
     
+    fseek (pf, 0, SEEK_END);
+    size = ftell (pf);
+    fseek (pf, 0, SEEK_SET);
+    
+    printf ("Allocating %0.2fMB\n", (float)size / 1024 / 1024);
+    pFilenamesBase = (char *)malloc (size);
+    
+    if (pFilenamesBase <= 0)
+    {
+	printf ("Error: cannot allocate memory\n");
+	exit (EXIT_FAILURE);    
+    }
+    
     pfout = fopen ("restored/dirrestore.sh", "w");
     if (!pfout)
     {
@@ -585,8 +598,8 @@ void GenerateRenameScript()
     
     printf ("Loading ID's...\n");
 
-    pFilenamesBase = (char *)malloc (size+1);
-
+    size = 0;
+    pos = 0;
     while (!feof (pf))
     {
 	if (fgets (info, sizeof(info), pf))
@@ -603,12 +616,12 @@ void GenerateRenameScript()
 	    pDirs->folderID=folderID;
 	    pDirs->parentID=parentID;
 	    
-	    pos = size;
-	    size+= strlen (filename) + 1;
-	    pFilenamesBase = (char *)realloc (pFilenamesBase, size * sizeof(char));
+	    //pFilenamesBase = (char *)realloc (pFilenamesBase, size * sizeof(char));
 	    pDirs->filename=pFilenamesBase + pos;
-
+	    //printf ("%s\n", filename);
 	    strcpy (pDirs->filename, filename);
+	    
+	    pos += strlen (filename) + 1;
 	    
 
 	
