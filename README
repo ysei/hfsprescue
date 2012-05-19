@@ -1,0 +1,24 @@
+hfsprescue 0.1 20101130 by Elmar Hanlhofer http://www.plop.at
+
+hfsprescue scans a damaged image file or partition that is formatted with
+HFS+. You can restore your files and directories, even when it's not possible 
+to mount it with your operating system. Your files and directories will be
+stored in the directory './restored' in your current directory. The HFS+ file
+or partition will not be changed. So you need enough space to copy out the
+files from the HFS+ file system. Important infos will be logged to
+'hfsprescue.log'. The directory structure will be stored in 'foldertable.txt'
+and is used to restore the directory structure and directory names.
+
+This is the first version. Maybe, you will be not able to restore all files
+and directories, but you should get the most back. However, its possible to
+make the program better and rescue all files.
+
+You have to complete 3 steps to restore your files:
+
+ 1) run 'hfsprescue [device node|image file]' this restores your files
+ 2) run 'hfsprescue -d' to create the script to restore the directory structure
+ 3) run 'hfsprescue -s' to restore the directory structure and directory names
+
+Example: hfsprescue /dev/sdb2
+         hfsprescue -v /dev/sdb2   verbose infos on the screen
+
