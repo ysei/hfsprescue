@@ -23,4 +23,4 @@ hfsprescue.o : hfsprescue.c
 	$(CC)  -c hfsprescue.c
 
 clean :
-	rm hfsprescue.o
+	rm -f hfsprescue.o hfsprescue

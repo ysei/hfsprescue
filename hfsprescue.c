@@ -13,6 +13,8 @@
 #define _FILE_OFFSET_BITS 64
 #define __USE_FILE_OFFSET64
 
+#include <sys/stat.h>
+
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -23,6 +25,8 @@
 #include <string.h>
 
 #include <signal.h>
+
+
 
 char recordType[4][14]={ "Folder","File","FolderThread","FileThread" };
 
