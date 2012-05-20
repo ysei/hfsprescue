@@ -8,36 +8,63 @@
  *
  */
 
-#define VERSION "0.2 20111125"
+#include "config.h"
 
-#define _FILE_OFFSET_BITS 64
+#if _FILE_OFFSET_BITS == 64
 #define __USE_FILE_OFFSET64
+#endif
 
+#ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
+#endif
 
 #include <stdio.h>
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
+#endif
+#ifdef HAVE_FCNTL_H
 #include <fcntl.h>
+#endif
 
+#ifdef HAVE_STDINT_H
 #include <stdint.h>
+#endif
 
+#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
+#endif
+#ifdef HAVE_STRING_H
 #include <string.h>
+#endif
 
 #include <signal.h>
 
+#ifdef HAVE_ICONV_H
+#include <iconv.h>
+#endif
 
+#if _FILE_OFFSET_BITS == 64
+typedef __off64_t off_t_;
+#define pread_ pread64
+#define open_ open64
+#else
+typedef off_t off_t_;
+#define pread_ pread
+#define open_ open
+#endif
 
 char recordType[4][14]={ "Folder","File","FolderThread","FileThread" };
 
 int fd;
-__off64_t fofs;
+off_t_ fofs;
 unsigned char *fbuffer;
 
 FILE *pflog, *pFolderTable;
 
 char log[1024];
 bool verboselog;
+
+iconv_t iconv_cd = (iconv_t)-1;
 
 int directories=0;
 int files=0;
@@ -137,7 +164,7 @@ struct HFSPlusCatalogFolder
 
 
 
-void swap16 (uint16_t *val)
+inline void swap16 (uint16_t *val)
 {
     uint16_t o;
     uint16_t n;
@@ -150,7 +177,7 @@ void swap16 (uint16_t *val)
     *val=n;    
 }
 
-void swap32 (uint32_t *val)
+inline void swap32 (uint32_t *val)
 {
     uint32_t o;
     uint32_t n;
@@ -165,19 +192,24 @@ void swap32 (uint32_t *val)
     *val=n;    
 }
 
-void ConvertFilename (unsigned char *in, unsigned char *out, unsigned int len)
+void ConvertFilename (unsigned char *in, unsigned char *out, size_t len)
 {
-    unsigned char c;
-    
-    for (int i=0;i < len; i++)
-    {
-	c=in[i * 2 + 1];
-	if ((c<' ') || (c>'z') || (c=='/') || (c=='\\')) c='_';
-	
-	out[i]=c;
-    }
-    out[len]=0x00;
+    size_t nconv;
+    size_t size = 655350; //FIX IT.
 
+    nconv = iconv (iconv_cd, (char **)&in, &len, (char **)&out, &size);
+    if (nconv == (size_t) -1) {
+	unsigned char c;
+	fprintf(stderr, "Can't convert filename. Using conservative conversion.\n");
+	for (int i=0;i < len; i++)
+	{
+	    c=in[i * 2 + 1];
+	    if ((c<' ') || (c>'z') || (c=='/') || (c=='\\')) c='_';
+	
+	    out[i]=c;
+	}
+	out[len]=0x00;
+    }
 }
 
 void Log()
@@ -225,7 +257,7 @@ void GetFile (char *filename,
 	      unsigned char *buffer,
 	      unsigned int ofs,
 	      unsigned int blocksize,
-	      unsigned int parentID	      
+	      unsigned int parentID      
 	      )
 {
 
@@ -282,16 +314,13 @@ void GetFile (char *filename,
 		(buffer[ofs + 3]);
 	ofs+=4;
 
-	sprintf (log, "block %d/0x%x num %d ofs %d", block, block, num, ofs);
+	sprintf (log, "block %ld/0x%lx num %ld ofs %d", block, block, num, ofs);
 	Log();
-	//printf ("%x %d %d\n",block*blocksize,num,ofs);
+
 	if ((num > 0) && (block > 10))
 	{
-//pos=0xaa4c7000;
-
-	    __off64_t g;
-//g=0x22aa4c7000;
-	    g=(__off64_t)block*(__off64_t)blocksize;
+	    off_t_ g;
+	    g=(off_t_)block*(off_t_)blocksize;
 
 
 	    if (num > 10000) 
@@ -306,8 +335,8 @@ void GetFile (char *filename,
 
 	    for (i = 0; i < num; i++)
 	    {    
-		pread64 (fd,fbuffer,blocksize,g);
-		g+=(__off64_t)blocksize;
+		pread_ (fd,fbuffer,blocksize,g);
+		g+=(off_t_)blocksize;
 		
 		if (filesize>blocksize)
 		    write=blocksize;
@@ -339,7 +368,7 @@ void GetFile (char *filename,
 void scanBuffer (unsigned char *buffer, unsigned int ofs,unsigned int blocksize)
 {
 
-    unsigned int keyLen;
+    uint16_t keyLen;
     unsigned int type;
     unsigned int filenameLen;
     unsigned char filename[256];
@@ -409,7 +438,7 @@ void scanBuffer (unsigned char *buffer, unsigned int ofs,unsigned int blocksize)
 	    ofs+=2;
     
 	    //	printf ("ofs %04x\n",ofs);
-	    ConvertFilename (buffer + ofs, filename, filenameLen);
+	    ConvertFilename (buffer + ofs, filename, (size_t)filenameLen);
 	    sprintf (log, "%s | ", filename);
 	    LogNoNL();
 
@@ -454,7 +483,7 @@ void scanBuffer (unsigned char *buffer, unsigned int ofs,unsigned int blocksize)
 		    ofs2++;
 		}
 		
-		sprintf (log, " | Filesize: %d", filesize);
+		sprintf (log, " | Filesize: %lld", filesize);
 		Log();
 		
 		if (ofs2 > 4000) 
@@ -492,7 +521,6 @@ void sigproc (int sig)
     if (pFolderTable)
 	fclose (pFolderTable);
 
-    printf ("\n\n");
     exit (EXIT_FAILURE);
 }
 
@@ -710,24 +738,24 @@ void RunScript()
 
 void PrintHelp()
 {    
-    printf ("hfsprescue scans a damaged image file or partition that is formatted with\n");
-    printf ("HFS+. You can restore your files and directories, even when it's not possible \n");
-    printf ("to mount it with your operating system. Your files and directories will be\n");
-    printf ("stored in the directory './restored' in your current directory. The HFS+ file\n");
-    printf ("or partition will not be changed. So you need enough space to copy out the\n");
-    printf ("files from the HFS+ file system. Important infos will be logged to\n");
-    printf ("'hfsprescue.log'. The directory structure will be stored in 'foldertable.txt'\n");
-    printf ("and is used to restore the directory structure and directory names.\n\n");
-    printf ("This is the first version. Maybe, you will be not able to restore all files\n");
-    printf ("and directories, but you should get the most back. However, its possible to\n");
-    printf ("make the program better and rescue all files.\n\n");
-    printf ("You have to complete 3 steps to restore your files:\n");
-    printf (" 1) run 'hfsprescue [device node|image file]' this restores your files\n");
-    printf (" 2) run 'hfsprescue -d' to create the script to restore the directory structure\n");
-    printf (" 3) run 'hfsprescue -s' to restore the directory structure and directory names\n");
-    printf ("\n");
-    printf ("Example: hfsprescue /dev/sdb2\n");
-    printf ("         hfsprescue -v /dev/sdb2   verbose infos on the screen\n");
+    printf ("hfsprescue scans a damaged image file or partition that is formatted with\n"
+	    "HFS+. You can restore your files and directories, even when it's not possible \n"
+	    "to mount it with your operating system. Your files and directories will be\n"
+	    "stored in the directory './restored' in your current directory. The HFS+ file\n"
+	    "or partition will not be changed. So you need enough space to copy out the\n"
+	    "files from the HFS+ file system. Important infos will be logged to\n"
+	    "'hfsprescue.log'. The directory structure will be stored in 'foldertable.txt'\n"
+	    "and is used to restore the directory structure and directory names.\n\n"
+	    "This is the first version. Maybe, you will be not able to restore all files\n"
+	    "and directories, but you should get the most back. However, its possible to\n"
+	    "make the program better and rescue all files.\n\n"
+	    "You have to complete 3 steps to restore your files:\n"
+	    " 1) run 'hfsprescue [device node|image file]' this restores your files\n"
+	    " 2) run 'hfsprescue -d' to create the script to restore the directory structure\n"
+	    " 3) run 'hfsprescue -s' to restore the directory structure and directory names\n"
+	    "\n"
+	    "Example: hfsprescue /dev/sdb2\n"
+	    "         hfsprescue -v /dev/sdb2   verbose infos on the screen\n");
 }
 
 int main (int argc, char *argv[])
@@ -743,7 +771,6 @@ int main (int argc, char *argv[])
     uint32_t 	*parentID;
     int type;
 
-//    unsigned filenameLen;
     char filename[4096];
     
     struct stat sts;
@@ -790,6 +817,13 @@ int main (int argc, char *argv[])
     }
 
 
+    iconv_cd = iconv_open("UTF-8", "UTF-16");
+    if (iconv_cd == (iconv_t) -1)
+    {
+	fprintf(stderr, "Can't convert filename.");
+	return EXIT_FAILURE;
+    }
+
 
     pflog=fopen ("hfsprescue.log","w");
     if (!pflog)
@@ -807,7 +841,7 @@ int main (int argc, char *argv[])
     parentID=(uint32_t *)malloc (sizeof (uint32_t));
     
     
-    fd=open64 (filename,O_RDONLY);
+    fd = open_ (filename,O_RDONLY);
     if (!fd)
     {
 	fprintf (stderr, "fopen error: %s\n", filename);
@@ -819,7 +853,7 @@ int main (int argc, char *argv[])
     mkdir ("restored",7660);
     mkdir ("restored/2",7660);	// root dir
     
-    pread64 (fd,vh,sizeof (HFSPlusVolumeHeader),1024);
+    pread_ (fd,vh,sizeof (HFSPlusVolumeHeader),1024);
     
     startOfs=4096;
 
@@ -868,7 +902,7 @@ int main (int argc, char *argv[])
 
     sprintf (log,"");
     LogPrn();
-    
+
     pFolderTable=fopen ("foldertable.txt","w");
     if (!pFolderTable)
     {
@@ -878,8 +912,8 @@ int main (int argc, char *argv[])
     fprintf (pFolderTable,"0|0|dummy entry\n");
 
 
-    fofs=(__off64_t)startOfs;
-    fofs+=(__off64_t)vh->catalogFile.extents[0].startBlock * (__off64_t)vh->blockSize;
+    fofs=(off_t_)startOfs;
+    fofs+=(off_t_)vh->catalogFile.extents[0].startBlock * (off_t_)vh->blockSize;
 
     buffer=(unsigned char *)malloc (vh->blockSize);
     fbuffer=(unsigned char *)malloc (vh->blockSize);
@@ -887,25 +921,24 @@ int main (int argc, char *argv[])
 
     int ofs = 3 * 4 + 2;
     fofs = 10;
-    //for (int i=0;i<1000000;i++)
     while (1)
     {
-	if (!pread64 (fd,buffer, vh->blockSize,fofs))
+	if (!pread_ (fd,buffer, vh->blockSize,fofs))
 	    break;
 
-	if (buffer[0] != 0xff)    
+	if (buffer[0] != 0xff)
 	    scanBuffer (buffer, ofs, vh->blockSize);
 
-	fofs+=(__off64_t)vh->blockSize;
+	fofs+=(off_t_)vh->blockSize;
 	scanned =  (float)fofs / (float)sts.st_size * 100;
 
 	PrintInfo();
     }
 
 
-    printf ("\n\n");    
-    printf ("Now run 'hfsprescue -d' to create the directory structure restore script\n\n");
-    
+    printf ("\n\n"
+	    "Now run 'hfsprescue -d' to create the directory structure restore script\n\n");
+
     free (fbuffer);
 
     fclose (pflog);
